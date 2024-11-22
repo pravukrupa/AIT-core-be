@@ -1,0 +1,110 @@
+name: CI/CD Workflows
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test-python-versions:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        python-version: [3.6, 3.7, 3.8, 3.9]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run tests
+      run: |
+        pytest
+
+  test-compiler-versions:
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        compiler: [gcc-7, gcc-8, gcc-9, clang-7, clang-8]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: sudo apt-get install -y ${{ matrix.compiler }}
+
+    - name: Build and run tests
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_C_COMPILER=${{ matrix.compiler }} -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+        make
+        ctest
+
+  npm-tests-and-build:
+    runs-on: ubuntu-20.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '14'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Run tests
+      run: npm test
+
+    - name: Build
+      run: npm run build
+
+  deploy:
+    needs: npm-tests-and-build
+    runs-on: ubuntu-20.04
+    environment: dev
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Deploy to Dev
+      run: |
+        curl -X POST -H "Authorization: Bearer ${{ secrets.DEV_API_KEY }}" https://api.dev.example.com/deploy
+
+  deploy-staging:
+    needs: deploy
+    runs-on: ubuntu-20.04
+    environment: staging
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Deploy to Staging
+      run: |
+        curl -X POST -H "Authorization: Bearer ${{ secrets.STAGING_API_KEY }}" https://api.staging.example.com/deploy
+
+  deploy-prod:
+    needs: deploy-staging
+    runs-on: ubuntu-20.04
+    environment: prod
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Deploy to Prod
+      run: |
+        curl -X POST -H "Authorization: Bearer ${{ secrets.PROD_API_KEY }}" https://api.prod.example.com/deploy
